@@ -1,0 +1,254 @@
+// Guessify Prisma schema
+// Docs: https://www.prisma.io/docs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & Spotify auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id          String   @id @default(cuid())
+  spotifyId   String   @unique
+  displayName String?
+  email       String?  @unique
+  avatar      String?
+  country     String?
+  product     String? // spotify subscription tier (free / premium)
+
+  // Spotify OAuth tokens (refreshed automatically)
+  accessToken     String? @db.Text
+  refreshToken    String? @db.Text
+  tokenExpiresAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topTracks        UserTopTrack[]
+  topArtists       UserTopArtist[]
+  playlists        Playlist[]
+  savedTracks      SavedTrack[]
+  gameSessions     GameSession[]
+  achievements     UserAchievement[]
+  dailyResults     DailyChallengeResult[]
+
+  // Aggregate stats (denormalised for fast dashboard reads)
+  totalScore     Int @default(0)
+  gamesPlayed    Int @default(0)
+  correctAnswers Int @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Music catalogue
+// ---------------------------------------------------------------------------
+
+model Artist {
+  id         String  @id @default(cuid())
+  spotifyId  String  @unique
+  name       String
+  image      String?
+  genres     String[]
+  popularity Int?
+
+  tracks    Track[]
+  topArtist UserTopArtist[]
+}
+
+model Track {
+  id          String  @id @default(cuid())
+  spotifyId   String  @unique
+  title       String
+  artist      String
+  artistId    String?
+  album       String?
+  albumId     String?
+  coverImage  String?
+  previewUrl  String?
+  releaseYear Int?
+  popularity  Int?
+
+  artistRef Artist? @relation(fields: [artistId], references: [id])
+
+  lyrics       Lyrics?
+  topTracks    UserTopTrack[]
+  savedTracks  SavedTrack[]
+  playlistItems PlaylistTrack[]
+
+  createdAt DateTime @default(now())
+}
+
+model Lyrics {
+  id         String   @id @default(cuid())
+  trackId    String   @unique
+  fullLyrics String   @db.Text
+  provider   String? // musixmatch | lyrics.ovh | genius
+  language   String?
+  createdAt  DateTime @default(now())
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// User library (imported from Spotify)
+// ---------------------------------------------------------------------------
+
+model UserTopTrack {
+  id        String @id @default(cuid())
+  userId    String
+  trackId   String
+  rank      Int
+  timeRange String @default("medium_term") // short_term | medium_term | long_term
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId, timeRange])
+}
+
+model UserTopArtist {
+  id        String @id @default(cuid())
+  userId    String
+  artistId  String
+  rank      Int
+  timeRange String @default("medium_term")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, artistId, timeRange])
+}
+
+model SavedTrack {
+  id      String   @id @default(cuid())
+  userId  String
+  trackId String
+  addedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, trackId])
+}
+
+model Playlist {
+  id          String  @id @default(cuid())
+  spotifyId   String  @unique
+  userId      String
+  name        String
+  description String?
+  image       String?
+  trackCount  Int     @default(0)
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tracks PlaylistTrack[]
+}
+
+model PlaylistTrack {
+  id         String @id @default(cuid())
+  playlistId String
+  trackId    String
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+}
+
+// ---------------------------------------------------------------------------
+// Games
+// ---------------------------------------------------------------------------
+
+enum GameType {
+  GUESS_THE_LYRICS
+  COMPLETE_THE_LYRICS
+  WRITE_THE_LYRICS
+  GUESS_THE_SONG
+  GUESS_THE_ARTIST
+  GUESS_THE_ALBUM
+  GUESS_THE_YEAR
+  HARDCORE
+  DAILY_CHALLENGE
+}
+
+model GameSession {
+  id            String   @id @default(cuid())
+  userId        String
+  gameType      GameType
+  score         Int      @default(0)
+  correctCount  Int      @default(0)
+  totalRounds   Int      @default(0)
+  durationMs    Int?
+  details       Json? // per-round breakdown
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([gameType])
+}
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String  @id @default(cuid())
+  key         String  @unique // stable identifier used in code
+  name        String
+  description String
+  icon        String?
+  threshold   Int     @default(1) // value of metric required to unlock
+  metric      String  @default("correctAnswers") // correctAnswers | gamesPlayed | totalScore | wins
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+}
+
+// ---------------------------------------------------------------------------
+// Daily challenge & leaderboard
+// ---------------------------------------------------------------------------
+
+model DailyChallenge {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  gameType  GameType
+  seed      String // deterministic seed used to build the challenge
+  payload   Json // pre-generated rounds
+  createdAt DateTime @default(now())
+
+  results DailyChallengeResult[]
+}
+
+model DailyChallengeResult {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  score       Int      @default(0)
+  correctCount Int     @default(0)
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([challengeId, score])
+}

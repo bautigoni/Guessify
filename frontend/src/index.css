@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-spotify-dark text-white font-sans min-h-screen;
+    background-image:
+      radial-gradient(circle at 20% -10%, rgba(29, 185, 84, 0.12), transparent 45%),
+      radial-gradient(circle at 90% 0%, rgba(29, 185, 84, 0.06), transparent 40%);
+    background-attachment: fixed;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-spotify-cardHover rounded-full;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+  .card {
+    @apply bg-spotify-card rounded-xl border border-white/5 transition-colors;
+  }
+  .card-hover {
+    @apply hover:bg-spotify-cardHover;
+  }
+  .btn-green {
+    @apply bg-spotify-green hover:bg-spotify-greenDark text-black font-bold
+      rounded-full px-6 py-3 transition-all hover:scale-[1.03] active:scale-95
+      disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply border border-white/20 hover:border-white text-white font-semibold
+      rounded-full px-6 py-3 transition-all hover:scale-[1.02] active:scale-95;
+  }
+  .skeleton {
+    @apply relative overflow-hidden bg-spotify-card rounded-lg;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.06),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

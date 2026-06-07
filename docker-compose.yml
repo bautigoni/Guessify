@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: guessify-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: guessify
+      POSTGRES_PASSWORD: guessify
+      POSTGRES_DB: guessify
+    ports:
+      - '5432:5432'
+    volumes:
+      - guessify_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U guessify']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: guessify-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://guessify:guessify@db:5432/guessify?schema=public
+      PORT: '4000'
+      NODE_ENV: production
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-http://localhost:4000/api/auth/spotify/callback}
+      MUSIXMATCH_API_KEY: ${MUSIXMATCH_API_KEY:-}
+      GENIUS_ACCESS_TOKEN: ${GENIUS_ACCESS_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    ports:
+      - '4000:4000'
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
+    container_name: guessify-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - '5173:80'
+
+volumes:
+  guessify_pgdata:
